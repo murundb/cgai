@@ -3,6 +3,10 @@
 //// Assignment a: Ray Tracing
 /////////////////////////////////////////////////////
 
+// Added to work with M1
+precision highp float;
+precision highp int;
+
 varying vec2 vUv; // UV (screen) coordinates in [0,1]^2
 
 
@@ -152,7 +156,48 @@ Hit hitSphere(const Ray r, const Sphere s)
     Hit hit = noHit;
 	
     /* your implementation starts */
-    
+    // Ref: https://raytracing.github.io/books/RayTracingInOneWeekend.html
+    vec3 oc = s.ori - r.ori; // Vector from the ray origin O to sphere center C
+
+    // float a = dot(r.dir, r.dir);
+    // float b = -2.0 * dot(r.dir, oc); 
+    // float c = dot(oc, oc,) - s.r * s.r
+    // float discriminant = b * b - 4 * a * c;
+
+    float a = dot(r.dir, r.dir);
+    float h = dot(r.dir, oc); // half of b
+    float c = dot(oc, oc) - s.r * s.r;
+    float discriminant = h * h - a * c;
+
+    if (discriminant < 0.0) {
+        return hit;
+    }
+
+    float sqrtd = sqrt(discriminant);
+
+    // Two roots of the quadratic equation
+    // (-h +- sqrt(d)) / a
+    float root1 = (h - sqrtd) / a;
+    float root2 = (h + sqrtd) / a;
+
+    // Pick smallest positive root
+    float t = root1;
+    if (t <= Epsilon) t = root2;
+    if (t <= Epsilon) return hit;
+
+    // Hit point
+    vec3 hitP = r.ori + t * r.dir;
+
+    // Hit normal
+    vec3 hitNormal = normalize(hitP - s.ori);
+
+    // First arg: time or distance
+    // Second arg: hit position vec3
+    // Third arg: hit normal vect3
+    // Fourth arg: hit material
+
+    hit = Hit(t, hitP, hitNormal, s.matId);
+
 	/* your implementation ends */
     
 	return hit;
@@ -164,6 +209,124 @@ Hit hitBox(const Ray r, const Box b)
     Hit hit = noHit;
 	
     /* your implementation starts */
+
+    /// Step 2/2
+    // Rotate the ray into the box's local coordinate system
+    // b.rot is rotation matrix from local to global
+    mat3 RglobalToLocal = transpose(b.rot)
+    rOriinBoxLocalFrame = RglobalToLocal * (r.ori - b.ori);
+    rDirinBoxLocalFrame = RglobalToLocal * r.dir;
+    /// Step 1/2
+
+    // Find the bounding box of the box
+    vec3 bMin = b.ori - b.halfWidth; // [b_x_min, b_y_min, b_z_min]
+    vec3 bMax = b.ori + b.halfWidth; // [b_x_max, b_y_max, b_z_max]
+
+    // Compute the intersection inverals along each axis
+    // p = o + td, t > 0
+    // p_x \in [b_x_min, b_x_max]
+    // p_y \in [b_y_min, b_y_max]
+    // p_z \in [b_z_min, b_z_max]
+    //
+    // For example, consider p_x
+    // b_x_min <= p_x <= b_x_max
+    // b_x_min <= o_x + t d_x <= b_x_max
+    // (b_x_min - o_x ) / d_x <= t <= (b_x_max - o_x) / d_x
+
+    // Valid region for t
+    float tMax = 1e8;
+    float tMin = -1e8;
+
+    // X-axis
+    // Case when ray X is parallel to X-axis
+    if (abs(r.dir.x) <= 1e-8) {
+        if (r.ori.x < bMin.x || r.ori.x > bMax.x) {
+            // No hit
+            return hit;
+        } 
+    } else {
+        float txMin = (bMin.x - r.ori.x) / r.dir.x;
+        float txMax = (bMax.x - r.ori.x) / r.dir.x;
+
+        // Negative ray direction
+        if (txMin > txMax) {
+            float tmp = txMin;
+            txMin = txMax;
+            txMax = tmp;
+        }
+
+        tMax = min(tMax, txMax);
+        tMin = max(tMin, txMin);
+
+        if (tMin > tMax) return hit; // No hit
+    }
+
+    // Y-axis
+    // Case when ray Y is parallel to Y-axis
+    if (abs(r.dir.y) <= 1e-8) {
+        if (r.ori.y < bMin.y || r.ori.y > bMax.y) {
+            // No hit
+            return hit;
+        } 
+    } else {
+        float tyMin = (bMin.y - r.ori.y) / r.dir.y;
+        float tyMax = (bMax.y - r.ori.y) / r.dir.y;
+
+        // Negative ray direction
+        if (tyMin > tyMax) {
+            float tmp = tyMin;
+            tyMin = tyMax;
+            tyMax = tmp;
+        }
+
+        tMax = min(tMax, tyMax);
+        tMin = max(tMin, tyMin);
+
+        if (tMin > tMax) return hit; // No hit
+    }
+
+    // Z-axis
+    // Case when ray Z is parallel to Z-axis
+    if (abs(r.dir.z) <= 1e-8) {
+        if (r.ori.z < bMin.z || r.ori.z > bMax.z) {
+            // No hit
+            return hit;
+        } 
+    } else {
+        float tzMin = (bMin.z - r.ori.z) / r.dir.z;
+        float tzMax = (bMax.z - r.ori.z) / r.dir.z;
+
+        // Negative ray direction
+        if (tzMin > tzMax) {
+            float tmp = tzMin;
+            tzMin = tzMax;
+            tzMax = tmp;
+        }
+
+        tMax = min(tMax, tzMax);
+        tMin = max(tMin, tzMin);
+
+        if (tMin > tMax) return hit; // No hit
+    }
+
+    if (tMax <= 0.0) return hit; // Whole intersection is behind ray
+
+    float t = (tMin > 0.0) ? tMin : tMax; // closest valid t
+
+    // Hit point
+    vec3 hitP = r.ori + t * r.dir;
+
+    // Hit normal - this is not really correct but whatever?
+    vec3 hitNormal = normalize(hitP - b.ori);
+
+    // First arg: time or distance
+    // Second arg: hit position vec3
+    // Third arg: hit normal vect3
+    // Fourth arg: hit material
+
+    hit = Hit(t, hitP, hitNormal, b.matId);
+
+
 
 	/* your implementation ends */
     
