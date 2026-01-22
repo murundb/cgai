@@ -243,6 +243,10 @@ Hit hitBox(const Ray r, const Box b)
     float tMax = 1e8;
     float tMin = -1e8;
 
+    // Surface normals
+    vec3 nMin = vec3(0.0);
+    vec3 nMax = vec3(0.0);
+
     // X-axis
     // Case when ray X is parallel to X-axis
     if (abs(d.x) <= 1e-8) {
@@ -254,15 +258,29 @@ Hit hitBox(const Ray r, const Box b)
         float txMin = (bMin.x - o.x) / d.x;
         float txMax = (bMax.x - o.x) / d.x;
 
+        vec3 nxMin = vec3(-1.0, 0.0, 0.0);
+        vec3 nxMax = vec3(1.0, 0.0, 0.0);
+
         // Negative ray direction
         if (txMin > txMax) {
             float tmp = txMin;
             txMin = txMax;
             txMax = tmp;
+
+            vec3 ntmp = nxMin;
+            nxMin = nxMax;
+            nxMax = ntmp;
         }
 
-        tMax = min(tMax, txMax);
-        tMin = max(tMin, txMin);
+        if (txMin > tMin) {
+            tMin = txMin;
+            nMin = nxMin;
+        }
+
+        if (txMax < tMax) {
+            tMax = txMax;
+            nMax = nxMax;
+        }
 
         if (tMin > tMax) return hit; // No hit
     }
@@ -278,15 +296,29 @@ Hit hitBox(const Ray r, const Box b)
         float tyMin = (bMin.y - o.y) / d.y;
         float tyMax = (bMax.y - o.y) / d.y;
 
+        vec3 nyMin = vec3(0.0, -1.0, 0.0);
+        vec3 nyMax = vec3(0.0, 1.0, 0.0);
+
         // Negative ray direction
         if (tyMin > tyMax) {
             float tmp = tyMin;
             tyMin = tyMax;
             tyMax = tmp;
+
+            vec3 ntmp = nyMin; 
+            nyMin = nyMax; 
+            nyMax = ntmp;
         }
 
-        tMax = min(tMax, tyMax);
-        tMin = max(tMin, tyMin);
+        if (tyMin > tMin) { 
+            tMin = tyMin; 
+            nMin = nyMin; 
+        } 
+        
+        if (tyMax < tMax) { 
+            tMax = tyMax; 
+            nMax = nyMax; 
+        }
 
         if (tMin > tMax) return hit; // No hit
     }
@@ -302,20 +334,37 @@ Hit hitBox(const Ray r, const Box b)
         float tzMin = (bMin.z - o.z) / d.z;
         float tzMax = (bMax.z - o.z) / d.z;
 
+        vec3 nzMin = vec3(0.0, 0.0, -1.0); 
+        vec3 nzMax = vec3(0.0, 0.0,  1.0);
+
         // Negative ray direction
         if (tzMin > tzMax) {
             float tmp = tzMin;
             tzMin = tzMax;
             tzMax = tmp;
+
+            vec3 ntmp = nzMin;
+            nzMin = nzMax;
+            nzMax = ntmp;
         }
 
-        tMax = min(tMax, tzMax);
-        tMin = max(tMin, tzMin);
+        if (tzMin > tMin) { 
+            tMin = tzMin;
+            nMin = nzMin; 
+        } 
+        
+        if (tzMax < tMax) {
+            tMax = tzMax;
+            nMax = nzMax; 
+        }
 
         if (tMin > tMax) return hit; // No hit
     }
 
-    if (tMax <= 0.0) return hit; // Whole intersection is behind ray
+    if (tMax <= 0.0) {
+        // Whole intersection is behind ray
+        return hit;
+    }
 
     float t = (tMin > 0.0) ? tMin : tMax; // closest valid t
 
@@ -323,8 +372,9 @@ Hit hitBox(const Ray r, const Box b)
     vec3 hitPinBoxFrame = o + t * d;
     vec3 hitPinWorldFrame = b.ori + (b.rot * hitPinBoxFrame);
 
-    // Hit normal - this is not really correct but whatever?
-    vec3 hitNormal = normalize(hitPinWorldFrame - b.ori);
+    // Hit normal
+    vec3 hitNormalinBoxFrame = (tMin > 0.0) ? nMin : nMax;
+    vec3 hitNormal = normalize(b.rot * hitNormalinBoxFrame);
 
     // First arg: time or distance
     // Second arg: hit position vec3
