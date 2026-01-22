@@ -211,16 +211,22 @@ Hit hitBox(const Ray r, const Box b)
     /* your implementation starts */
 
     /// Step 2/2
-    // Rotate the ray into the box's local coordinate system
-    // b.rot is rotation matrix from local to global
-    mat3 RglobalToLocal = transpose(b.rot)
-    rOriinBoxLocalFrame = RglobalToLocal * (r.ori - b.ori);
-    rDirinBoxLocalFrame = RglobalToLocal * r.dir;
+
+    // r.ori: Position of ori relative to world origin resolved in world frame
+    // b.ori: Position of box center relative to world origin resolved in world frame
+    // r.ori - b.ori = Position of ray relative to box origin resolved in world frame
+    // b.rot is rotation matrix from box frame to world frame
+
+    // Resolve the ray origin and direction in the box coordinate system
+    mat3 R_WorldToBox = transpose(b.rot);
+    vec3 o = R_WorldToBox * (r.ori - b.ori);
+    vec3 d = R_WorldToBox * r.dir;
+
     /// Step 1/2
 
-    // Find the bounding box of the box
-    vec3 bMin = b.ori - b.halfWidth; // [b_x_min, b_y_min, b_z_min]
-    vec3 bMax = b.ori + b.halfWidth; // [b_x_max, b_y_max, b_z_max]
+    // Find the bounding box of the box in box frame
+    vec3 bMin = -b.halfWidth; // [b_x_min, b_y_min, b_z_min]
+    vec3 bMax = b.halfWidth; // [b_x_max, b_y_max, b_z_max]
 
     // Compute the intersection inverals along each axis
     // p = o + td, t > 0
@@ -239,14 +245,14 @@ Hit hitBox(const Ray r, const Box b)
 
     // X-axis
     // Case when ray X is parallel to X-axis
-    if (abs(r.dir.x) <= 1e-8) {
-        if (r.ori.x < bMin.x || r.ori.x > bMax.x) {
+    if (abs(d.x) <= 1e-8) {
+        if (o.x < bMin.x || o.x > bMax.x) {
             // No hit
             return hit;
         } 
     } else {
-        float txMin = (bMin.x - r.ori.x) / r.dir.x;
-        float txMax = (bMax.x - r.ori.x) / r.dir.x;
+        float txMin = (bMin.x - o.x) / d.x;
+        float txMax = (bMax.x - o.x) / d.x;
 
         // Negative ray direction
         if (txMin > txMax) {
@@ -263,14 +269,14 @@ Hit hitBox(const Ray r, const Box b)
 
     // Y-axis
     // Case when ray Y is parallel to Y-axis
-    if (abs(r.dir.y) <= 1e-8) {
-        if (r.ori.y < bMin.y || r.ori.y > bMax.y) {
+    if (abs(d.y) <= 1e-8) {
+        if (o.y < bMin.y || o.y > bMax.y) {
             // No hit
             return hit;
         } 
     } else {
-        float tyMin = (bMin.y - r.ori.y) / r.dir.y;
-        float tyMax = (bMax.y - r.ori.y) / r.dir.y;
+        float tyMin = (bMin.y - o.y) / d.y;
+        float tyMax = (bMax.y - o.y) / d.y;
 
         // Negative ray direction
         if (tyMin > tyMax) {
@@ -287,14 +293,14 @@ Hit hitBox(const Ray r, const Box b)
 
     // Z-axis
     // Case when ray Z is parallel to Z-axis
-    if (abs(r.dir.z) <= 1e-8) {
-        if (r.ori.z < bMin.z || r.ori.z > bMax.z) {
+    if (abs(d.z) <= 1e-8) {
+        if (o.z < bMin.z || o.z > bMax.z) {
             // No hit
             return hit;
         } 
     } else {
-        float tzMin = (bMin.z - r.ori.z) / r.dir.z;
-        float tzMax = (bMax.z - r.ori.z) / r.dir.z;
+        float tzMin = (bMin.z - o.z) / d.z;
+        float tzMax = (bMax.z - o.z) / d.z;
 
         // Negative ray direction
         if (tzMin > tzMax) {
@@ -314,19 +320,18 @@ Hit hitBox(const Ray r, const Box b)
     float t = (tMin > 0.0) ? tMin : tMax; // closest valid t
 
     // Hit point
-    vec3 hitP = r.ori + t * r.dir;
+    vec3 hitPinBoxFrame = o + t * d;
+    vec3 hitPinWorldFrame = b.ori + (b.rot * hitPinBoxFrame);
 
     // Hit normal - this is not really correct but whatever?
-    vec3 hitNormal = normalize(hitP - b.ori);
+    vec3 hitNormal = normalize(hitPinWorldFrame - b.ori);
 
     // First arg: time or distance
     // Second arg: hit position vec3
     // Third arg: hit normal vect3
     // Fourth arg: hit material
 
-    hit = Hit(t, hitP, hitNormal, b.matId);
-
-
+    hit = Hit(t, hitPinWorldFrame, hitNormal, b.matId);
 
 	/* your implementation ends */
     
@@ -365,7 +370,31 @@ vec3 shading_phong(Light light, int matId, vec3 e, vec3 p, vec3 s, vec3 n)
     vec3 color = matId == 0 ? vec3(0.2, 0, 0) : vec3(0, 0, 0.3);
 	
     /* your implementation starts */
-    
+    // 3 points: s (light source point), e (eye point), p (point on surface)
+    // 4 vectors: l (light direction), v (viewer direction), n (normal), r (reflection direction)
+
+    // Phong shading model:
+    // L_phong = \sum_{j \in light} (k_a I^j_a + k^j_d max(0, 1^j \dot n) + k_s I^j_s max(0, v \dot r)^p)
+
+    vec3 ka = materials[matId].ka;
+    vec3 kd = materials[matId].kd;
+    vec3 ks = materials[matId].ks;
+
+    vec3 Ia = light.Ia;
+    vec3 Id = light.Id;
+    vec3 Is = light.Is;
+
+    vec3 l = normalize(s - p);
+    vec3 v = normalize(e - p);
+    vec3 r = reflect(-l, normalize(n));
+
+    float shininess = materials[matId].shininess;
+
+    vec3 ambient = ka * Ia;
+    vec3 lambertian = kd * Id * max(0.0, dot(l, n));
+    vec3 specular = ks * Is * pow(max(0.0, dot(v, r)), shininess);
+
+    color = ambient + lambertian + specular;
 	/* your implementation ends */
     
 	return color;
