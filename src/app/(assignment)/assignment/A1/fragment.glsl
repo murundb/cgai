@@ -427,7 +427,8 @@ vec3 shading_phong(Light light, int matId, vec3 e, vec3 p, vec3 s, vec3 n)
     // L_phong = \sum_{j \in light} (k_a I^j_a + k^j_d max(0, 1^j \dot n) + k_s I^j_s max(0, v \dot r)^p)
 
     vec3 ka = materials[matId].ka;
-    vec3 kd = materials[matId].kd;
+    // vec3 kd = materials[matId].kd; // Diffuse the color Kd per TA instruction
+    vec3 kd = sampleDiffuse(matId, p);
     vec3 ks = materials[matId].ks;
 
     vec3 Ia = light.Ia;
@@ -441,7 +442,7 @@ vec3 shading_phong(Light light, int matId, vec3 e, vec3 p, vec3 s, vec3 n)
     float shininess = materials[matId].shininess;
 
     vec3 ambient = ka * Ia;
-    vec3 lambertian = kd * Id * max(0.0, dot(l, n));
+    vec3 lambertian = kd * Id * max(0.0, dot(l, normalize(n)));
     vec3 specular = ks * Is * pow(max(0.0, dot(v, r)), shininess);
 
     color = ambient + lambertian + specular;
@@ -456,7 +457,19 @@ bool isShadowed(Light light, Hit h)
     bool shadowed = false;
 	
     /* your implementation starts */
-    
+    Ray shadowRay;
+    // Offset the ray's origin slightly along the surface normal to avoid self-shadowing
+    shadowRay.ori = h.p + normalize(h.normal) * Epsilon;
+
+    vec3 hitToLight = light.position - shadowRay.ori;
+    shadowRay.dir = normalize(hitToLight);
+
+    Hit hit = findHit(shadowRay);
+
+    if (hit.t > Epsilon && hit.t < length(hitToLight)) 
+    {
+        shadowed = true;
+    }
 	/* your implementation ends */
     
 	return shadowed;
@@ -469,7 +482,14 @@ vec3 sampleDiffuse(int matId, vec3 p)
         vec3 color = materials[matId].kd;
 		
         /* your implementation starts */
-        
+        // Compute the UV coordinates of the intersection point p
+        // For the plane (matId = 0), UV tile is on XZ with some scale factor
+        float scale = 0.2;
+        vec2 uv = p.xz * scale;
+
+        // Call GLSL built-in function texture to sample from the texture image and query color with uv
+        vec4 col = texture(floorTex, uv);
+        color *= col.rgb;
 		/* your implementation ends */
         
 		return color;
@@ -598,7 +618,7 @@ void initScene()
 
 /* your implementation starts */
 
-const int numberOfSampling = 1;
+const int numberOfSampling = 50;
 
 /* your implementation ends */
 
@@ -626,6 +646,14 @@ void main()
         // TODO Step 5: Define the reflected ray and assign this ray to recursive_ray
         
 		/* your implementation starts */
+        // Reflect the ray direction about the surface normal
+        vec3 refDir = reflect(recursive_ray.dir, normalize(hit.normal));
+
+        // Offset the origin along the normal to avoid shadow acne
+        vec3 refOrigin = hit.p + normalize(hit.normal) * Epsilon;
+
+        recursive_ray = Ray(refOrigin, refDir);
+        
         
 		/* your implementation ends */
     }
