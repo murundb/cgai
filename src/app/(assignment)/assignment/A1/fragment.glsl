@@ -181,8 +181,7 @@ Hit hitSphere(const Ray r, const Sphere s)
     float root2 = (h + sqrtd) / a;
 
     // Pick smallest positive root
-    float t = root1;
-    if (t <= Epsilon) t = root2;
+    float t = (root1 < root2) ? root1 : root2;
     if (t <= Epsilon) return hit;
 
     // Hit point
@@ -466,7 +465,7 @@ bool isShadowed(Light light, Hit h)
 
     Hit hit = findHit(shadowRay);
 
-    if (hit.t > Epsilon && hit.t < length(hitToLight)) 
+    if (hit.t > 0.0 && hit.t < length(hitToLight)) 
     {
         shadowed = true;
     }
@@ -646,12 +645,14 @@ void main()
         // TODO Step 5: Define the reflected ray and assign this ray to recursive_ray
         
 		/* your implementation starts */
+        // Recursive ray implementation
         // Reflect the ray direction about the surface normal
         vec3 refDir = reflect(recursive_ray.dir, normalize(hit.normal));
 
         // Offset the origin along the normal to avoid shadow acne
         vec3 refOrigin = hit.p + normalize(hit.normal) * Epsilon;
 
+        // Set the next ray in the ray tree as the intersection point
         recursive_ray = Ray(refOrigin, refDir);
         
         
